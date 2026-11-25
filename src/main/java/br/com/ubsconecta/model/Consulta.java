@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 @Entity
 @Table(name = "consulta")
@@ -41,6 +42,12 @@ public class Consulta {
     private String motivo;
 
     private String status;
+    
+    @Transient
+    private String nomePaciente;
+    
+    @Transient
+    private String nomeUbs;
 
     public Consulta() {
     }
@@ -123,5 +130,21 @@ public class Consulta {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+    
+    public String getNomePaciente() {
+    	return nomePaciente;
+    }
+    
+    public void setNomePaciente(String nomePaciente) {
+    	this.nomePaciente = nomePaciente;
+    }
+    
+    public String getNomeUbs() {
+    	return nomeUbs;
+    }
+    
+    public void setNomeUbs(String nomeUbs) {
+    	this.nomeUbs = nomeUbs;
     }
 }

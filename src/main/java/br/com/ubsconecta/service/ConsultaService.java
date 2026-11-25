@@ -4,6 +4,10 @@ package br.com.ubsconecta.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -14,19 +18,25 @@ import br.com.ubsconecta.model.Consulta;
 import br.com.ubsconecta.model.Horarios;
 import br.com.ubsconecta.model.Paciente;
 import br.com.ubsconecta.model.Profissional;
+import br.com.ubsconecta.model.Ubs;
 import br.com.ubsconecta.repository.ConsultaRepository;
 import br.com.ubsconecta.repository.HorariosRepository;
 import br.com.ubsconecta.repository.ProfissionalRepository;
+import br.com.ubsconecta.repository.PacienteRepository;
+import br.com.ubsconecta.repository.UbsRepository;
+
 
 @Service
 public class ConsultaService {
 
-    private final ProfissionalRepository profissionalRepository;
-	private final ConsultaRepository consultaRepository;//Como o java vai reconhecer as variaveis
+    private final UbsRepository ubsRepository;
+	private final ProfissionalRepository profissionalRepository;
+	private final ConsultaRepository consultaRepository;
     private final PacienteService pacienteService;
     private final HorariosRepository horariosRepository;
-
-    private static final Set<String> STATUS_EXIBIDOS = ///status da consulta, pelo horario
+    private final PacienteRepository pacienteRepository;
+    
+    private static final Set<String> STATUS_EXIBIDOS =
             Set.of("solicitada", "agendada", "confirmada");
 
     private static final List<String> STATUS_OCUPADOS =
@@ -36,33 +46,68 @@ public class ConsultaService {
             ConsultaRepository consultaRepository,
             PacienteService pacienteService,
             HorariosRepository horariosRepository,
-            ProfissionalRepository profissionalRepository) {
+            ProfissionalRepository profissionalRepository,
+            PacienteRepository pacienteRepository,
+            UbsRepository ubsRepository) {
 
         this.consultaRepository = consultaRepository;
         this.pacienteService = pacienteService;
         this.horariosRepository = horariosRepository;
         this.profissionalRepository = profissionalRepository;
+        this.pacienteRepository = pacienteRepository;
+        this.ubsRepository = ubsRepository;
     }
 
     public List<Consulta> listarTodos() {
         return consultaRepository.findAll();
     }
     
-    public List<Consulta> buscarConsultasDaUbs(Integer idUsuario) {
 
-        Profissional profissional = profissionalRepository
-                .findByIdUsuario(idUsuario);
+public List<Consulta> buscarConsultasDaUbs(Integer idUsuario) {
 
-        if (profissional == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Profissional não encontrado.");
-        }
+    Profissional profissional = profissionalRepository
+            .findByIdUsuario(idUsuario);
 
-        return consultaRepository
-                .findByIdUbsOrderByDataAtendimentoAsc(
-                        profissional.getIdUbs());
+    if (profissional == null) {
+        throw new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Profissional não encontrado.");
     }
+
+    List<Consulta> consultas = consultaRepository
+            .findByIdUbsOrderByDataAtendimentoAsc(
+                    profissional.getIdUbs());
+
+   
+    List<Integer> idsPacientes = consultas.stream()
+            .map(Consulta::getIdPaciente)
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+
+    
+    Map<Integer, Paciente> pacientes = pacienteRepository
+            .findAllById(idsPacientes)
+            .stream()
+            .collect(Collectors.toMap(
+                    Paciente::getId,
+                    paciente -> paciente));
+
+   
+    for (Consulta consulta : consultas) {
+
+        Paciente paciente = pacientes.get(
+                consulta.getIdPaciente());
+
+        consulta.setNomePaciente(
+                paciente != null && paciente.getNome() != null
+                        ? paciente.getNome()
+                        : "Paciente não identificado");
+    }
+
+    return consultas;
+}
+
     
     @Transactional
     public Consulta confirmarConsulta(Integer idConsulta, Integer idUsuario) {
@@ -238,8 +283,53 @@ public class ConsultaService {
                 horario.setDisponivel(horarioFuturo);
                 horariosRepository.save(horario);
             }
+            
         }
+         
 
         return recusada;
     }
+    
+
+
+	public List<Consulta> buscarConsultasPorPaciente(Integer idUsuario) {
+	
+	    Paciente paciente = pacienteService.buscarPorUsuario(idUsuario);
+	
+	    if (paciente == null) {
+	        throw new ResponseStatusException(
+	                HttpStatus.NOT_FOUND,
+	                "Paciente não encontrado.");
+	    }
+	
+	    List<Consulta> consultas =
+	            consultaRepository.findByIdPaciente(paciente.getId());
+	
+	    List<Integer> idsUbs = consultas.stream()
+	            .map(Consulta::getIdUbs)
+	            .filter(Objects::nonNull)
+	            .distinct()
+	            .toList();
+	
+	    Map<Integer, Ubs> unidades = ubsRepository
+	            .findAllById(idsUbs)
+	            .stream()
+	            .collect(Collectors.toMap(Ubs::getId, ubs -> ubs));
+	
+	    for (Consulta consulta : consultas) {
+	
+	        Ubs ubs = unidades.get(consulta.getIdUbs());
+	
+	        consulta.setNomeUbs(
+	                ubs != null && ubs.getNomeUbs() != null
+	                        ? ubs.getNomeUbs()
+	                        : "Unidade não identificada"
+	        );
+	    }
+	
+	    return consultas;
+	}
+
+	
+
 }

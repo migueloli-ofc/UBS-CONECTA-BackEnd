@@ -55,6 +55,14 @@ public class ConsultaController {
             consultaService.buscarProximasPorUsuario(idUsuario)
         );
     }
+    
+    @GetMapping("/paciente")
+    public ResponseEntity<List<Consulta>> buscarConsultasPorPaciente( 
+    		@RequestParam Integer idUsuario){
+    	return ResponseEntity.ok(
+    			consultaService.buscarConsultasPorPaciente(idUsuario));
+    }
+    
 
     @PostMapping
     public Consulta salvar(@RequestBody Consulta consulta) {
@@ -80,5 +88,6 @@ public class ConsultaController {
             consultaService.recusarConsulta(idConsulta, idUsuario)
         );
     }
+    
     
 }
