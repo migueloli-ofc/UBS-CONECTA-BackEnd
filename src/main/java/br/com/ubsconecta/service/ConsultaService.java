@@ -35,6 +35,7 @@ public class ConsultaService {
     private final PacienteService pacienteService;
     private final HorariosRepository horariosRepository;
     private final PacienteRepository pacienteRepository;
+    private final HorariosService horariosService;
     
     private static final Set<String> STATUS_EXIBIDOS =
             Set.of("solicitada", "agendada", "confirmada");
@@ -48,7 +49,8 @@ public class ConsultaService {
             HorariosRepository horariosRepository,
             ProfissionalRepository profissionalRepository,
             PacienteRepository pacienteRepository,
-            UbsRepository ubsRepository) {
+            UbsRepository ubsRepository,
+            HorariosService horariosService) {
 
         this.consultaRepository = consultaRepository;
         this.pacienteService = pacienteService;
@@ -56,6 +58,7 @@ public class ConsultaService {
         this.profissionalRepository = profissionalRepository;
         this.pacienteRepository = pacienteRepository;
         this.ubsRepository = ubsRepository;
+        this.horariosService = horariosService;
     }
 
     public List<Consulta> listarTodos() {
@@ -170,59 +173,117 @@ public List<Consulta> buscarConsultasDaUbs(Integer idUsuario) {
                 .toList();
     }
 
-    @Transactional
-    public Consulta salvar(Consulta consulta) {
+	
+	@Transactional
+	public Consulta salvar(Consulta consulta) {
+	
+	 
+	
+	    if (!Objects.equals(consulta.getIdUbs(), 4)) {
+	        throw new ResponseStatusException(
+	            HttpStatus.BAD_REQUEST,
+	            "O agendamento está disponível apenas para a UBS de Lagoa do Mato."
+	        );
+	    }
+	
+	    
+	
+	    if (consulta.getIdPaciente() == null
+	            || !pacienteRepository.existsById(
+	                consulta.getIdPaciente())) {
+	
+	        throw new ResponseStatusException(
+	            HttpStatus.BAD_REQUEST,
+	            "Paciente não encontrado."
+	        );
+	    }
+	
+	    
+	
+	    if (consulta.getIdHorarios() == null) {
+	        throw new ResponseStatusException(
+	            HttpStatus.BAD_REQUEST,
+	            "Selecione um horário."
+	        );
+	    }
+	
+	    
+	
+	    Horarios horario = horariosRepository
+	        .buscarPorIdComBloqueio(
+	            consulta.getIdHorarios()
+	        )
+	        .orElseThrow(() -> new ResponseStatusException(
+	            HttpStatus.NOT_FOUND,
+	            "Horário não encontrado."
+	        ));
+	
+	    
+	
+	    if (!Objects.equals(
+	            horario.getIdUbs(),
+	            consulta.getIdUbs())) {
+	
+	        throw new ResponseStatusException(
+	            HttpStatus.BAD_REQUEST,
+	            "O horário selecionado pertence a outra UBS."
+	        );
+	    }
+	
+	    
+	
+	    if (!Boolean.TRUE.equals(horario.getDisponivel())) {
+	        throw new ResponseStatusException(
+	            HttpStatus.CONFLICT,
+	            "Este horário não está mais disponível."
+	        );
+	    }
+	
+	  
+	
+	    horariosService.validarHorarioAgendamento(horario);
+	
+	    
+	
+	    boolean jaReservado =
+	        consultaRepository.existsByIdHorariosAndStatusIn(
+	            consulta.getIdHorarios(),
+	            STATUS_OCUPADOS
+	        );
+	
+	    if (jaReservado) {
+	        throw new ResponseStatusException(
+	            HttpStatus.CONFLICT,
+	            "Este horário já possui uma solicitação."
+	        );
+	    }
+	
+	    
+	
+	    consulta.setId(null);
+	    consulta.setIdProfissional(null);
+	    consulta.setDataAtendimento(horario.getDataHora());
+	
+	    consulta.setDataSolicitacao(
+	        LocalDateTime.now(
+	            java.time.ZoneId.of("America/Fortaleza")
+	        )
+	    );
+	
+	    consulta.setStatus("Solicitada");
+	
+	    // Salvar a consulta
+	
+	    Consulta salva = consultaRepository.save(consulta);
+	
+	   
+	
+	    horario.setDisponivel(false);
+	    horariosRepository.save(horario);
+	
+	    return salva;
+	}
 
-        if (consulta.getIdHorarios() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Selecione um horário.");
-        }
-
-        Horarios horario = horariosRepository
-                .buscarPorIdComBloqueio(consulta.getIdHorarios())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Horário não encontrado."));
-
-        if (!Boolean.TRUE.equals(horario.getDisponivel())) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Este horário não está mais disponível.");
-        }
-
-        if (horario.getDataHora() == null
-                || !horario.getDataHora().isAfter(LocalDateTime.now())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Selecione um horário futuro.");
-        }
-
-        boolean jaReservado =
-                consultaRepository.existsByIdHorariosAndStatusIn(
-                        consulta.getIdHorarios(),
-                        STATUS_OCUPADOS);
-
-        if (jaReservado) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Este horário já possui uma solicitação.");
-        }
-
-        consulta.setDataAtendimento(horario.getDataHora());
-
-        if (consulta.getStatus() == null
-                || consulta.getStatus().isBlank()) {
-            consulta.setStatus("Solicitada");
-        }
-
-        Consulta salva = consultaRepository.save(consulta);
-
-        horario.setDisponivel(false);
-        horariosRepository.save(horario);
-
-        return salva;
-    }
 
 
     @Transactional
